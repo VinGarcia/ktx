@@ -19,13 +19,6 @@ type TxBeginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-// Tx represents a database transaction.
-type Tx interface {
-	DBRunner
-	Rollback() error
-	Commit() error
-}
-
 // Transaction encapsulates several database operations into a single transaction.
 // All database operations should be performed inside the input callback `fn`
 // using the provided DBRunner.
@@ -38,7 +31,7 @@ type Tx interface {
 //
 // If the provided db is already a transaction (sql.Tx), it will be reused
 // without starting a new transaction.
-func Transaction(ctx context.Context, db DBRunner, fn func(DBRunner) error) error {
+func Transaction(ctx context.Context, db DBRunner, fn func(db *sql.Tx) error) error {
 	// Check if db is already a transaction
 	if tx, ok := db.(*sql.Tx); ok {
 		return fn(tx)

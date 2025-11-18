@@ -36,7 +36,7 @@ func TestTransaction_Success(t *testing.T) {
 
 	ctx := context.Background()
 
-	err := Transaction(ctx, db, func(tx DBRunner) error {
+	err := Transaction(ctx, db, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
 		if err != nil {
 			return err
@@ -69,7 +69,7 @@ func TestTransaction_Rollback(t *testing.T) {
 	}
 
 	// Transaction that should fail and rollback
-	err = Transaction(ctx, db, func(tx DBRunner) error {
+	err = Transaction(ctx, db, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
 		if err != nil {
 			return err
@@ -97,7 +97,7 @@ func TestTransaction_RollbackOnError(t *testing.T) {
 	testError := errors.New("test error")
 
 	// Transaction that returns an error
-	err := Transaction(ctx, db, func(tx DBRunner) error {
+	err := Transaction(ctx, db, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
 		if err != nil {
 			return err
@@ -129,7 +129,7 @@ func TestTransaction_RollbackOnPanic(t *testing.T) {
 			}
 		}()
 
-		err := Transaction(ctx, db, func(tx DBRunner) error {
+		err := Transaction(ctx, db, func(tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
 			if err != nil {
 				return err
@@ -157,14 +157,14 @@ func TestTransaction_NestedTransaction(t *testing.T) {
 	ctx := context.Background()
 
 	// Start a transaction and pass it to another Transaction call
-	err := Transaction(ctx, db, func(tx1 DBRunner) error {
+	err := Transaction(ctx, db, func(tx1 *sql.Tx) error {
 		_, err := tx1.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
 		if err != nil {
 			return err
 		}
 
 		// This should reuse the existing transaction
-		return Transaction(ctx, tx1, func(tx2 DBRunner) error {
+		return Transaction(ctx, tx1, func(tx2 *sql.Tx) error {
 			_, err := tx2.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "Jane", "jane@example.com")
 			return err
 		})
@@ -193,7 +193,7 @@ func TestTransaction_Query(t *testing.T) {
 	}
 
 	var foundName string
-	err = Transaction(ctx, db, func(tx DBRunner) error {
+	err = Transaction(ctx, db, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, "SELECT name FROM users WHERE email = ?", "john@example.com")
 		if err != nil {
 			return err
