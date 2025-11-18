@@ -23,3 +23,7 @@ $(GOBIN)/staticcheck:
 
 $(GOBIN)/errcheck:
 	go install github.com/kisielk/errcheck@latest
+
+.PHONY: example
+example:
+	go run ./example

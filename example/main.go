@@ -1,18 +1,3 @@
-# ktx - Safe Database Transactions
-
-A Keep it simple Transaction manager that simplifies error handling and provides
-safe database transaction management with automatic rollback when errors or panics occur.
-
-## Features
-
-- **Panic-safe**: Automatically rolls back transactions if a panic occurs
-- **Error handling**: Rolls back transactions if an error is returned
-- **Nested transaction support**: Reuses existing transactions when called within another transaction
-- **Compatible with database/sql**: Works with all databases supported by `database/sql`
-
-## Usage
-
-```go
 package main
 
 import (
@@ -32,7 +17,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	createUsersTable(db)
 
@@ -67,20 +54,3 @@ func createUsersTable(db *sql.DB) {
 		)
 	`)
 }
-```
-
-## Lint & Testing
-
-Run the lint and tests with:
-
-```bash
-make lint test
-```
-
-The tests use an in-memory SQLite database and cover:
-- Successful transactions
-- Rollback on database errors
-- Rollback on explicit errors
-- Rollback on panics
-- Nested transaction handling
-- Query operations within transactions
