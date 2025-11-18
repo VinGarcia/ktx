@@ -32,7 +32,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 func TestTransaction_Success(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -50,20 +50,7 @@ func TestTransaction_Success(t *testing.T) {
 	}
 
 	// Verify both records were inserted
-	rows, err := db.Query("SELECT COUNT(*) FROM users")
-	if err != nil {
-		t.Fatalf("Failed to query users: %v", err)
-	}
-	defer rows.Close()
-
-	var count int
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			t.Fatalf("Failed to scan count: %v", err)
-		}
-	}
-
+	count := countDbUsers(t, db)
 	if count != 2 {
 		t.Errorf("Expected 2 users, got %d", count)
 	}
@@ -71,7 +58,7 @@ func TestTransaction_Success(t *testing.T) {
 
 func TestTransaction_Rollback(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -91,26 +78,12 @@ func TestTransaction_Rollback(t *testing.T) {
 		_, err = tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "Jane", "initial@example.com")
 		return err
 	})
-
 	if err == nil {
 		t.Fatal("Transaction should have failed due to unique constraint violation")
 	}
 
 	// Verify only the initial record remains
-	rows, err := db.Query("SELECT COUNT(*) FROM users")
-	if err != nil {
-		t.Fatalf("Failed to query users: %v", err)
-	}
-	defer rows.Close()
-
-	var count int
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			t.Fatalf("Failed to scan count: %v", err)
-		}
-	}
-
+	count := countDbUsers(t, db)
 	if count != 1 {
 		t.Errorf("Expected 1 user (rollback should have occurred), got %d", count)
 	}
@@ -118,7 +91,7 @@ func TestTransaction_Rollback(t *testing.T) {
 
 func TestTransaction_RollbackOnError(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	testError := errors.New("test error")
@@ -131,26 +104,12 @@ func TestTransaction_RollbackOnError(t *testing.T) {
 		}
 		return testError
 	})
-
 	if err == nil || err != testError {
 		t.Fatalf("Expected test error, got: %v", err)
 	}
 
 	// Verify no records were inserted (rollback occurred)
-	rows, err := db.Query("SELECT COUNT(*) FROM users")
-	if err != nil {
-		t.Fatalf("Failed to query users: %v", err)
-	}
-	defer rows.Close()
-
-	var count int
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			t.Fatalf("Failed to scan count: %v", err)
-		}
-	}
-
+	count := countDbUsers(t, db)
 	if count != 0 {
 		t.Errorf("Expected 0 users (rollback should have occurred), got %d", count)
 	}
@@ -158,41 +117,34 @@ func TestTransaction_RollbackOnError(t *testing.T) {
 
 func TestTransaction_RollbackOnPanic(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
-	// Test panic recovery and rollback
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic but none occurred")
+	var panicPayload any
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicPayload = r
+			}
+		}()
+
+		err := Transaction(ctx, db, func(tx DBRunner) error {
+			_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
+			if err != nil {
+				return err
+			}
+			panic("test panic")
+		})
+		if err != nil {
+			t.Fatalf("unexpected error inserting user to db")
 		}
 	}()
-
-	Transaction(ctx, db, func(tx DBRunner) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
-		if err != nil {
-			return err
-		}
-		panic("test panic")
-	})
-
-	// This code should not be reached due to panic,
-	// but if it is, we can verify rollback occurred
-	rows, err := db.Query("SELECT COUNT(*) FROM users")
-	if err != nil {
-		t.Fatalf("Failed to query users: %v", err)
-	}
-	defer rows.Close()
-
-	var count int
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			t.Fatalf("Failed to scan count: %v", err)
-		}
+	if panicPayload != any("test panic") {
+		t.Fatalf("unexpected panic payloade: %v", panicPayload)
 	}
 
+	count := countDbUsers(t, db)
 	if count != 0 {
 		t.Errorf("Expected 0 users (rollback should have occurred), got %d", count)
 	}
@@ -200,7 +152,7 @@ func TestTransaction_RollbackOnPanic(t *testing.T) {
 
 func TestTransaction_NestedTransaction(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -217,26 +169,12 @@ func TestTransaction_NestedTransaction(t *testing.T) {
 			return err
 		})
 	})
-
 	if err != nil {
 		t.Fatalf("Nested transaction failed: %v", err)
 	}
 
 	// Verify both records were inserted
-	rows, err := db.Query("SELECT COUNT(*) FROM users")
-	if err != nil {
-		t.Fatalf("Failed to query users: %v", err)
-	}
-	defer rows.Close()
-
-	var count int
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			t.Fatalf("Failed to scan count: %v", err)
-		}
-	}
-
+	count := countDbUsers(t, db)
 	if count != 2 {
 		t.Errorf("Expected 2 users, got %d", count)
 	}
@@ -244,7 +182,7 @@ func TestTransaction_NestedTransaction(t *testing.T) {
 
 func TestTransaction_Query(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -260,14 +198,13 @@ func TestTransaction_Query(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		if rows.Next() {
 			return rows.Scan(&foundName)
 		}
 		return errors.New("no user found")
 	})
-
 	if err != nil {
 		t.Fatalf("Transaction with query failed: %v", err)
 	}
@@ -275,4 +212,21 @@ func TestTransaction_Query(t *testing.T) {
 	if foundName != "John" {
 		t.Errorf("Expected 'John', got '%s'", foundName)
 	}
+}
+
+func countDbUsers(t *testing.T, db *sql.DB) (count int) {
+	rows, err := db.Query("SELECT COUNT(*) FROM users")
+	if err != nil {
+		t.Fatalf("Failed to query users: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	if rows.Next() {
+		err = rows.Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to scan count: %v", err)
+		}
+	}
+
+	return count
 }
