@@ -1,4 +1,4 @@
-# ktx - Simple & Safe Database Transactions
+# KTX - Simple & Safe Database Transactions
 
 A Keep it simple Transaction manager that simplifies error handling and provides
 safe database transaction management with automatic rollback when errors or panics occur.
